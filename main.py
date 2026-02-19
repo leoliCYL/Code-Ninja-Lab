@@ -4,6 +4,7 @@ import time
 import numpy as np
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+from queue import Queue
 
 def is_ok_sign(hand_lms):
     if not hand_lms: return False
@@ -16,13 +17,16 @@ def is_ok_sign(hand_lms):
 
 class PasswordApp:
     def __init__(self):
+        self.event_queue = Queue()
+
         self.TARGET_PASSWORD = [1, 2, 2, 4]
         self.entered_password = []
-        self.app_state = "LOCKED"
+        self.app_state = 'LOCKED'
+        self.set_app_state("LOCKED")
         self.current_stage = 0
         self.last_finger_count = -1
         self.start_time = 0
-        self.HOLD_TIME = 3.0
+        self.HOLD_TIME = 1.5
 
         # UI/Button Config
         self.del_btn = {'x1': 0.88, 'y1': 0.05, 'x2': 0.97, 'y2': 0.12, 'color': (0, 0, 255)}
@@ -41,6 +45,12 @@ class PasswordApp:
 
     def __del__(self):
         self.capture.release()
+    
+    def set_app_state(self, state):
+        if state == self.app_state:
+            return
+        self.app_state = state
+        self.event_queue.put(state)
 
     def get_frame(self):
         success, frame = self.capture.read()
@@ -59,7 +69,7 @@ class PasswordApp:
             cv2.putText(page, txt, (w//2 - 280, h//2), 1, 3, color, 4)
             cv2.circle(page, (w//2, h//2 + 120), 70 + pulse, color, 2)
             cv2.putText(page, "Hold OK for 0.5s to Reset", (w//2 - 180, h - 50), 1, 1, (255, 255, 255), 1)
-            
+
             rgb_p = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res_p = self.detector.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_p))
             if res_p and res_p.hand_landmarks:
@@ -67,10 +77,15 @@ class PasswordApp:
                     if is_ok_sign(lms):
                         if self.reset_hover_start == 0: self.reset_hover_start = time.time()
                         if time.time() - self.reset_hover_start > 0.5:
-                            self.entered_password, self.current_stage, self.app_state = [], 0, "LOCKED"
+                            self.entered_password, self.current_stage = [], 0
+                            self.set_app_state("LOCKED")
                     else: self.reset_hover_start = 0
             
             return page
+
+        # Do detection before drawing onto the frame
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        result = self.detector.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame))
 
         # --- UI DRAWING ---
         if len(self.entered_password) > 0:
@@ -81,8 +96,6 @@ class PasswordApp:
             cv2.rectangle(frame, (int(self.ent_btn['x1']*w), int(self.ent_btn['y1']*h)), (int(self.ent_btn['x2']*w), int(self.ent_btn['y2']*h)), self.ent_btn['color'], -1)
             cv2.putText(frame, "ENT", (int(self.ent_btn['x1']*w)+8, int(self.ent_btn['y1']*h)+32), 0, 0.6, (0, 0, 0), 2)
 
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        result = self.detector.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame))
         current_frame_fingers = 0
 
         if result and result.hand_landmarks:
@@ -110,7 +123,7 @@ class PasswordApp:
                     self.ent_btn['color'] = (255, 255, 255) # White hover
                     if self.enter_hover_start == 0: self.enter_hover_start = time.time()
                     if time.time() - self.enter_hover_start > 1.2:
-                        self.app_state = "GRANTED" if self.entered_password == self.TARGET_PASSWORD else "DENIED"
+                        self.set_app_state("GRANTED" if self.entered_password == self.TARGET_PASSWORD else "DENIED")
                 else:
                     self.ent_btn['color'] = (0, 255, 0)
                     if len(self.entered_password) == 4: self.enter_hover_start = 0
