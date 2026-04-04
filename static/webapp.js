@@ -25,14 +25,23 @@ function startCameraScreen() {
 
 eventStream.onmessage = function(event) {
     const message = JSON.parse(event.data);
+    console.log(message);
     switch (message.state) {
         case 'GRANTED':
-            startGameScreen("_Xxt7bpDMHDwk");
-            let game = document.getElementById("game");
-            game.focus();
+            if (message.gameId !== "") {
+                //startGameScreen("_Xxt7bpDMHDwk");
+                startGameScreen(message.gameId);
+                let game = document.getElementById("game");
+                game.focus();
+            }
+            
             break;
         default:
             startCameraScreen();
             break;
     }
+}
+
+window.onload = function() {
+    
 }

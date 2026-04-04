@@ -5,6 +5,10 @@ import numpy as np
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from queue import Queue
+from pymongo import MongoClient
+from dotenv import load_dotenv, dotenv_values
+import os
+
 
 def is_ok_sign(hand_lms):
     if not hand_lms: return False
@@ -17,7 +21,13 @@ def is_ok_sign(hand_lms):
 
 class PasswordApp:
     def __init__(self):
+        mongodb_uri = os.getenv('VITE_MONGO_URI')
+        if mongodb_uri is None:
+            raise Exception('Environment variable VITE_MONGO_URI must be set')
+        self.client = MongoClient(mongodb_uri)
+
         self.event_queue = Queue()
+        self.notify_queue = Queue()
 
         self.TARGET_PASSWORD = [1, 2, 2, 4]
         self.entered_password = []
@@ -27,6 +37,7 @@ class PasswordApp:
         self.last_finger_count = -1
         self.start_time = 0
         self.HOLD_TIME = 1.5
+        self.username = ""
 
         # UI/Button Config
         self.del_btn = {'x1': 0.88, 'y1': 0.05, 'x2': 0.97, 'y2': 0.12, 'color': (0, 0, 255)}
@@ -46,11 +57,27 @@ class PasswordApp:
     def __del__(self):
         self.capture.release()
     
-    def set_app_state(self, state):
+    def find_user_by_pin(self, pin):
+        db = self.client.test
+        user = db.currentusers.find_one({"pin": str(pin)})
+        return user
+
+    def set_app_state(self, state, gameId=""):
         if state == self.app_state:
             return
         self.app_state = state
-        self.event_queue.put(state)
+        message = {'state': state, 'gameId': gameId}
+        self.event_queue.put(message)
+    
+    def enter_password(self):
+        pin = "".join(map(str, self.entered_password))
+        user = self.find_user_by_pin(pin)
+        if user is not None:
+            self.username = user['username']
+            gameId = user.get('gameId', '')
+            self.set_app_state("GRANTED", gameId)
+        else:
+            self.set_app_state("DENIED")
 
     def get_frame(self):
         success, frame = self.capture.read()
@@ -65,10 +92,12 @@ class PasswordApp:
             t = time.time()
             pulse = int(25 * np.sin(t * 5))
             color = (0, 255, 0) if self.app_state == "GRANTED" else (0, 0, 255)
-            txt = "ACCESS UNLOCKED" if self.app_state == "GRANTED" else "ACCESS DENIED"
-            cv2.putText(page, txt, (w//2 - 280, h//2), 1, 3, color, 4)
+            txt = f"ACCESS UNLOCKED" if self.app_state == "GRANTED" else "ACCESS DENIED"
+            cv2.putText(page, txt, (w//2 - 280, h//2 - 50), 1, 3, color, 4)
             cv2.circle(page, (w//2, h//2 + 120), 70 + pulse, color, 2)
             cv2.putText(page, "Hold OK for 0.5s to Reset", (w//2 - 180, h - 50), 1, 1, (255, 255, 255), 1)
+            if self.app_state == "GRANTED":
+                cv2.putText(page, f"Welcome {self.username}", (w // 2 - 280, h // 2), 1, 3, color, 4)
 
             rgb_p = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res_p = self.detector.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_p))
@@ -123,7 +152,7 @@ class PasswordApp:
                     self.ent_btn['color'] = (255, 255, 255) # White hover
                     if self.enter_hover_start == 0: self.enter_hover_start = time.time()
                     if time.time() - self.enter_hover_start > 1.2:
-                        self.set_app_state("GRANTED" if self.entered_password == self.TARGET_PASSWORD else "DENIED")
+                        self.enter_password()
                 else:
                     self.ent_btn['color'] = (0, 255, 0)
                     if len(self.entered_password) == 4: self.enter_hover_start = 0
