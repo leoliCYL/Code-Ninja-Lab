@@ -7,14 +7,17 @@ function setBodyHtml(contents) {
 }
 
 function startGameScreen(gameId) {
+    const isFullUrl = gameId.startsWith('http');
+    const src = isFullUrl ? gameId : `https://arcade.makecode.com/---run?id=${gameId}`;
+    const frameClass = isFullUrl ? 'game-frame-direct' : 'game-frame';
+
     setBodyHtml(
         '<div class="game-container">'
-        + '<iframe'
-        + ' id="game"'
-        + ' class="game-frame"'
-        + ` src="https://arcade.makecode.com/---run?id=${gameId}"`
+        + `<iframe id="game" class="${frameClass}"`
+        + ` src="${src}"`
         + ' allowfullscreen="allowfullscreen"'
-        + ' sandbox="allow-popups allow-forms allow-scripts allow-same-origin" frameborder="0"></iframe>'
+        + ' sandbox="allow-popups allow-forms allow-scripts allow-same-origin" frameborder="0">'
+        + '</iframe>'
         + '</div>'
     );
 }
@@ -29,19 +32,13 @@ eventStream.onmessage = function(event) {
     switch (message.state) {
         case 'GRANTED':
             if (message.gameId !== "") {
-                //startGameScreen("_Xxt7bpDMHDwk");
                 startGameScreen(message.gameId);
-                let game = document.getElementById("game");
-                game.focus();
             }
-            
             break;
         default:
             startCameraScreen();
             break;
     }
-}
+};
 
-window.onload = function() {
-    
-}
+window.onload = function() {};

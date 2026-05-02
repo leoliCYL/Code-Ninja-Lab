@@ -1,0 +1,10 @@
+{
+  "name": "code-ninja-lab",
+  "version": "1.0.0",
+  "description": "Hand Gesture Tracking with OpenCV and MediaPipe",
+  "scripts": {
+    "dev": ".venv/bin/python main.py"
+  },
+  "author": "",
+  "license": "ISC"
+}
